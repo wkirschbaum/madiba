@@ -1,53 +1,69 @@
 package main
 
-import (
-	"fmt"
+import "github.com/nsf/termbox-go"
 
-	"github.com/nsf/termbox-go"
-)
-
-var current string
-var curev termbox.Event
+var row = 0
+var col = 0
+var buffer = [][]rune{}
 
 func redraw() {
+	const coldef = termbox.ColorDefault
+	termbox.Clear(coldef, coldef)
+	defer termbox.Flush()
 
+	for crow, ccols := range buffer {
+		for cpos, char := range ccols {
+			termbox.SetCell(cpos, crow, char, termbox.ColorDefault, termbox.ColorDefault)
+		}
+	}
+
+	termbox.SetCursor(col, row)
+}
+
+func typeBackspace() {
+	if col != 0 {
+		buffer[row] = buffer[row][:len(buffer[row])-1]
+		col--
+	} else if row > 0 {
+		row--
+		col = len(buffer[row])
+	}
+}
+
+func typeLetter(letter rune) {
+	buffer[row] = append(buffer[row], letter)
+	col++
+}
+
+func typeEnter() {
+	buffer = append(buffer, []rune{})
+	row++
+	col = 0
 }
 
 func main() {
+	buffer = append(buffer, []rune{})
 	err := termbox.Init()
 	if err != nil {
 		panic(err)
 	}
 	defer termbox.Close()
-	termbox.SetInputMode(termbox.InputAlt | termbox.InputMouse)
+	termbox.SetInputMode(termbox.InputAlt)
 	redraw()
+	exit := false
 
-	data := make([]byte, 0, 64)
-mainloop:
-	for {
-		if cap(data)-len(data) < 32 {
-			newdata := make([]byte, len(data), len(data)+32)
-			copy(newdata, data)
-			data = newdata
-		}
-		beg := len(data)
-		d := data[beg : beg+32]
-		switch ev := termbox.PollRawEvent(d); ev.Type {
-		case termbox.EventRaw:
-			data = data[:beg+ev.N]
-			current = fmt.Sprintf("%q", data)
-			if current == `"q"` {
-				break mainloop
-			}
-
-			for {
-				ev := termbox.ParseEvent(data)
-				if ev.N == 0 {
-					break
-				}
-				curev = ev
-				copy(data, data[curev.N:])
-				data = data[:len(data)-curev.N]
+	for !exit {
+		switch ev := termbox.PollEvent(); ev.Type {
+		case termbox.EventKey:
+			switch ev.Key {
+			case termbox.KeyCtrlC:
+				exit = true
+			case termbox.KeyEnter:
+				typeEnter()
+			case termbox.KeyBackspace, termbox.KeyBackspace2:
+				typeBackspace()
+			default:
+				typeLetter(ev.Ch)
 			}
 		case termbox.EventError:
 			panic(ev.Err)
